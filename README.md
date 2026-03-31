@@ -4,25 +4,47 @@
 For this project's midterm submission, we created a Random Forest model to process the tabular data, a fully-connected CNN model to process the image data, and then implemented late fusion to combine predictions from both modalities into a final classification.
 
 ## File Descriptions:
-**cnn_pipeline.py:**
+**cnn_pipeline.py:** Python script that implements the CNN and FCN model pipelines for the image data with an added evaluate function and custom ImageDataset class for the multi modal late fusion pipeline in multi_modal.ipynb. 
 
-**cnn_val_predictions.csv:**
+**cnn_val_predictions.csv:** CSV file of cnn validation metrics with shape (700, 10). There are 700 validation samples and 10 features:
+
+1. Unique sample ID  
+
+2. true label 
+
+3. cnn model class prediction 
+
+4-10. cnn model probability for each class (0-6).
 
 **collab_cnn_pipeline.ipynb:**
 
 **collab_cnn_pipeline.ipynb:**
 
-**fcn_val_predictions.csv:**
+**fcn_val_predictions.csv:** CSV file of fcn validation metrics with shape (700, 10). There are 700 validation samples and 10 features:
 
-**multi_modal.ipynb:**
+1. Unique sample ID  
 
-**preprocess.py:**
+2. true label 
+
+3. fcn model class prediction 
+
+4-10. fcn model probability for each class (0-6). 
+
+**multi_modal.ipynb:** Google Colab file that performs late fusion with the pipelines from the random_forest_pipeline.py and the cnn_pipeline.py files. Generates the validation predictions csv files that are used for the two late fusion techniques: average fusion and logistic regression with late fusion features. 
 
 **random_forest_pipeline.py:** Python script that implements the Random Forest model pipeline for the tabular data.
 
 **random_forest_pipeline_results.ipynb:** Google Colab file that contains the script from random_forest_pipeline.py and the associated outputs.
 
-**rf_val_predictions.csv:**
+**rf_val_predictions.csv:** CSV file of random forest validation metrics with shape (700, 10). There are 700 validation samples and 10 features:
+
+1. Unique sample ID  
+
+2. true label 
+
+3. rf model class prediction 
+
+4-10. rf model probability for each class (0-6).
 
 
 ## Reasoning and Next Steps
