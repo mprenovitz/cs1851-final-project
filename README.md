@@ -4,14 +4,23 @@ For this project's midterm submission, we created a Random Forest model to proce
 
 ## File Descriptions:
 **cnn_pipeline.py:**
+
 **cnn_val_predictions.csv:**
+
 **collab_cnn_pipeline.ipynb:**
+
 **collab_cnn_pipeline.ipynb:**
+
 **fcn_val_predictions.csv:**
+
 **multi_modal.ipynb:**
+
 **preprocess.py:**
+
 **random_forest_pipeline.py:** Python script that implements the Random Forest model pipeline for the tabular data.
+
 **random_forest_pipeline_results.ipynb:** Google Colab file that contains the script from random_forest_pipeline.py and the associated outputs.
+
 **rf_val_predictions.csv:**
 
 
