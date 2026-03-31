@@ -1,4 +1,5 @@
 # CS 1851: Team ___ Final Project
+**Authors:** Matt Prenovitz, Vanessa Alexander, and Veronica Figueroa
 
 For this project's midterm submission, we created a Random Forest model to process the tabular data, a fully-connected CNN model to process the image data, and then implemented late fusion to combine predictions from both modalities into a final classification.
 
@@ -29,4 +30,4 @@ For the tabular data model, we decided to start with **Random Forest** because i
 
 For the image data model, we decided to create a **fully-connected CNN** because it is well-equipped to handle image data, provides a good baseline for understanding full model behavior, and we do not currently have any prior assumptions that could dictate partial connections. Should this model not perform too well, we could switch to a **partially-connected CNN** that could result in faster training, potentially better generalization performance, and exploit any prior knowledge we extract from the data.
 
-For the fusion concatenation, we decided to implement late fusion since this allowed us to train the tabular and image data models independently, which works well as a baseline approach. Based on performance, should we decide that we want to learn cross-modal interactions, we could implement **intermediate fusion**.
+For the fusion concatenation, we decided to implement **late fusion** since this allowed us to train the tabular and image data models independently, which works well as a baseline approach. Based on performance, should we decide that we want to learn cross-modal interactions, we could implement **intermediate fusion**.
