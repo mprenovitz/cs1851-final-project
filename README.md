@@ -17,8 +17,7 @@ For this project's midterm submission, we created a Random Forest model to proce
 4-10. cnn model probability for each class (0-6).
 
 **collab_cnn_pipeline.ipynb:**
-
-**collab_cnn_pipeline.ipynb:**
+This contains the full CNN and FCN pipeline for processing image data, including simple graphs to visualize change in loss overtime. This is the most up to date file for running just the CNN and FCN portion and should be used over the cnn_pipeline.py file. To run, upload the file to Colab, and ensure the data is uploaded to collab in a directory called: final_data. After that, you can run all on the notebook. 
 
 **fcn_val_predictions.csv:** CSV file of fcn validation metrics with shape (700, 10). There are 700 validation samples and 10 features:
 
