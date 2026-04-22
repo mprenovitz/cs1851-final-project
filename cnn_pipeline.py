@@ -15,12 +15,13 @@ import pandas as pd
 from torch.utils.data import TensorDataset, DataLoader, Subset, Dataset
 import torchvision.transforms as transforms
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import f1_score
 import matplotlib.pyplot as plt
 import numpy as np
 
 #CNN architechture adapted from in class example as a starting architecture
 class CNN(nn.Module):
-    def __init__(self, device, train_loader, val_loader, num_classes=7, dropout_cnn=0.25, dropout_class=0.3, kernel_size=3, max_pool=2, padding=1):
+    def __init__(self, device, num_classes=7, dropout_cnn=0.25, dropout_class=0.3, kernel_size=3, max_pool=2, padding=1):
         super().__init__()
         self.cnn = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=kernel_size, padding=padding),
@@ -47,71 +48,74 @@ class CNN(nn.Module):
 
         )
         self.device = device
-        self.train_loader = train_loader
-        self.val_loader = val_loader
 
     def forward(self, x):
         cnn_output = self.cnn(x)
         output= self.classifier(cnn_output)
         return output
 
-def train_one_epoch(model, optimizer, criterion):
-      model.train()
-      total_loss = 0.0
-      correct = 0
-      total = 0
-      for idx, (i, l, _) in enumerate(model.train_loader):
+def train_one_epoch(model, train_loader, optimizer, criterion):
+    model.train()
+    total_loss = 0.0
+    correct = 0
+    total = 0
+    for x, y, ids in train_loader:
+        # print(type(y)
+        # print(y.shape)
         # print(f'{idx+1}/{len(model.train_loader)}')
-        i, l = i.to(model.device), l.to(model.device).long()
+        x = x.to(model.device)
+        y = y.to(model.device).long()
         optimizer.zero_grad()
-        logits = model(i)
-        loss = criterion(logits, l)
+        logits = model(x)
+        loss = criterion(logits, y)
         loss.backward()
         optimizer.step()
-
+    
         pred = logits.argmax(dim=1)
-        correct += (pred == l).sum().item()
-        total = l.size(0)
-        total_loss += loss.item() * i.size(0)
-      avg_loss = total_loss / len(model.train_loader.dataset)
-      acc = correct / total
-      return avg_loss, acc
+        correct += (pred == y).sum().item()
+        total += y.size(0)
+        total_loss += loss.item() * x.size(0)
+    avg_loss = total_loss / len(train_loader.dataset)
+    acc = correct / total
+    return avg_loss, acc
 
-
-
-
-def run_experiment(model, num_epochs, lr=1e-3):
+def run_experiment(model, train_loader, val_loader, num_epochs, lr=1e-3):
     # best_val_loss = 0
     criterion = nn.CrossEntropyLoss() #this loss converts the real values into probabilites in it first
     optimizer = optim.Adam(model.parameters(), lr=lr)
     history = {"train_loss": [], "val_loss": [], "test_acc": []}
+    best_f1_score = 0
 
     for epoch in range(1, num_epochs + 1):
         # print('Training epoch: ', epoch)
-        tr_loss, tr_acc = train_one_epoch(model, optimizer, criterion)
+        tr_loss, tr_acc = train_one_epoch(model, train_loader, optimizer, criterion)
         # print("Epoch " + str(epoch) + ' loss: ' + str(tr_loss))
-        val_loss, probs, preds, labels, ids  = evaluate(model, criterion)
+        val_loss, macro_f1, val_info  = evaluate(model, val_loader, criterion)
         history["train_loss"].append(tr_loss)
         # history['train_accuracy'].append(tr_acc)
         history['val_loss'].append(val_loss)
+        if macro_f1 > best_f1_score: 
+            best_f1_score = macro_f1
+            torch.save(model.state_dict(), "cnn_best.pt")
         # history["test_loss"].append(te_loss)
         # history["test_acc"].append(te_acc)
         if epoch % 10 == 0:
             print(f"  Epoch {epoch:3d} | train loss {tr_loss:.4f}  | train acc {tr_acc:.4f}")
-            print(f"val loss {val_loss:.4f}")
+            print(f"val loss {val_loss:.4f} | val_f1{macro_f1:.4f}")
 
             #| "
                 #   f"test loss {te_loss:.4f} | test acc {te_acc:.3f}")
-    return history, probs, preds, labels, ids
+    return history, val_info
 
-def evaluate(model, criterion):
-
+def evaluate(model, loader, criterion):
   model.eval()
-  all_probs, all_preds, all_labels, ids = [], [], [], []
+  all_probs, all_preds, all_labels, all_ids = [], [], [], []
   val_loss = 0
 
   with torch.no_grad():
-    for x, y, id in model.val_loader:
+    for x, y, ids in loader:
+        # print(ids)
+        # print(type(y))
       x, y = x.to(model.device), y.to(model.device)
       logits = model(x)
       loss = criterion(logits, y)
@@ -119,23 +123,47 @@ def evaluate(model, criterion):
 
       probs = torch.softmax(logits, dim=1)
       preds = probs.argmax(dim=1)
+    #   print(ids[:5])
+    #   print(len(ids), probs.shape)
 
       all_probs.append(probs.cpu().numpy())
       all_preds.append(preds.cpu().numpy())
       all_labels.append(y.cpu().numpy())
-      ids.append(id)
+      all_ids.extend(list(ids))
 
-  val_loss = val_loss / len(model.val_loader.dataset)
+  val_loss = val_loss / len(loader.dataset)
   all_probs = np.concatenate(all_probs)
   all_preds = np.concatenate(all_preds)
   all_labels = np.concatenate(all_labels)
-  ids = np.concatenate(ids)
+  all_ids = np.array(all_ids)
+  macro_f1 = f1_score(all_labels, all_preds, average="macro")
 
-  return val_loss, all_probs, all_preds, all_labels, ids
+  return val_loss, macro_f1, (all_probs, all_preds, all_labels, all_ids)
+
+
+def predict_test(model, test_loader):
+  model.eval()
+  all_probs, all_preds, all_ids = [], [], []
+
+  with torch.no_grad():
+    for x, ids in test_loader:
+      x = x.to(model.device)
+      logits = model(x)
+      probs = torch.softmax(logits, dim=1)
+      preds = probs.argmax(dim=1)
+      all_probs.append(probs.cpu().numpy())
+      all_preds.append(preds.cpu().numpy())
+      all_ids.extend(list(ids))
+
+  all_probs = np.concatenate(all_probs)
+  all_preds = np.concatenate(all_preds)
+  all_ids = np.array(all_ids)
+
+  return all_probs, all_preds, all_ids
 
 # make dataset
 class ImageDataset(Dataset):
-  def __init__(self, X, y, ids):
+  def __init__(self, X, ids, y = None):
     self.X = X
     self.y = y
     self.ids = ids
@@ -144,65 +172,34 @@ class ImageDataset(Dataset):
     return len(self.X)
 
   def __getitem__(self, idx):
-    return self.X[idx], self.y[idx], self.ids[idx]
+      
+    if self.y is not None:
+      return self.X[idx], self.y[idx], self.ids[idx]
+    else: 
+       return self.X[idx], self.ids[idx]
 
 def build_dataloader(images, labels, ids):
-  X_train, X_val, y_train, y_val, train_ids, val_ids = train_test_split(images, labels, ids, test_size=0.2, random_state=42, stratify=labels)
-  X_train, X_val = torch.tensor(X_train, dtype=torch.float32).permute(0, 3, 1, 2) / 255.0, torch.tensor(X_val, dtype=torch.float32).permute(0, 3, 1, 2) / 255.0
-  y_train, y_val = torch.tensor(y_train), torch.tensor(y_val)
+    images = np.array(images)
+    X_train, X_val, y_train, y_val, train_ids, val_ids = train_test_split(images, labels, ids, test_size=0.2, random_state=42, stratify=labels)
+    X_train = torch.tensor(X_train, dtype=torch.float32).permute(0, 3, 1, 2) / 255.0
+    X_val = torch.tensor(X_val, dtype=torch.float32).permute(0, 3, 1, 2) / 255.0
+    y_train = torch.tensor(y_train)
+    y_val = torch.tensor(y_val)
 
-  train_dataset = ImageDataset(X_train, y_train, train_ids)
-  val_dataset = ImageDataset(X_val, y_val, val_ids)
+    train_dataset = ImageDataset(X_train, train_ids, y_train)
+    val_dataset = ImageDataset(X_val, val_ids, y_val)
 
-  train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
-  val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
-  return train_loader, val_loader
+    train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
+    return train_loader, val_loader
 
-# from google.colab import drive
-# drive.mount('/content/drive')
+def build_testdata(images, ids):
+   X_test = torch.tensor(images, dtype=torch.float32).permute(0, 3, 1, 2) / 255.0
 
-# torch.manual_seed(42)
-# np.random.seed(42)
+   test_dataset = ImageDataset(X_test, ids)
+   test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
-# DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu") #this ensures that the code runs on GPUs if available
-# print(f"Device: {DEVICE}\n")
-
-#loading in the data
-# images = np.load("/content/drive/MyDrive/Colab Notebooks/data/train_images.npy")
-# labels = np.load("/content/drive/MyDrive/Colab Notebooks/data/train_labels.npy")
-# ids = np.load("/content/drive/MyDrive/Colab Notebooks/data/train_ids.npy", allow_pickle=True)
-
-
-# train_loader, val_loader = build_dataloader(images, labels, ids)
-# print(train_loader.dataset)
-# print("Train classes:", set(train_loader.dataset.y.tolist()))
-# print("Val classes:", set(val_loader.dataset.y.tolist()))
-# print(np.unique(train_loader.dataset))
-# print(np.unique(val_loader.dataset))
-
-# print(train_loader.dataset[0][0].size())
-
-# EPOCHS = 100
-# num_classes = 7
-
-# cnn = CNN(device=DEVICE, train_loader=train_loader, val_loader=val_loader, num_classes=num_classes).to(DEVICE)
-# hist_base, probs, preds, labels, ids  = run_experiment(cnn, EPOCHS, lr=1e-4)
-# def create_val_df(probs, preds, labels, ids, prefix):
-#   df = pd.DataFrame({"ID": ids,
-#                         "true_label":labels,
-#                         f"{prefix}_pred": preds})
-
-
-#   for c in range(7):
-#     df[f"{prefix}_prob_{c}"] = probs[:, c]
-
-#   path = "/content/drive/MyDrive/Colab Notebooks/"
-#   file_name = f'{prefix}_val_predictions.csv'
-#   save_path = os.path.join(os.path.dirname(path), file_name)
-
-#   df.to_csv(save_path, index=False)
-
-# print("Saved to:", save_path)
+   return test_loader
 
 class FCN(nn.Module):
     def __init__ (self, criterion, train_loader, val_loader, device, lr=1e-3):
@@ -253,61 +250,3 @@ class FCN(nn.Module):
       avg_loss = total_loss / len(self.train_loader)
       print(f"Epoch {epoch:>2}/{epochs}  |  Loss = {avg_loss:.4f}")
       return history, avg_loss, val_loss, probs, preds, labels, ids
-
-# criterion = nn.CrossEntropyLoss()
-# EPOCHS = 100
-
-# fcn = FCN(criterion, train_loader, val_loader, DEVICE, lr=1e-3).to(DEVICE)
-# hist_fully, _ ,val_loss, probs, preds, labels, ids = fcn.fit(epochs=EPOCHS)
-
-# cnn_df = pd.DataFrame({"ID": ids,
-#                       "true_label":labels,
-#                       "fcn_pred": preds})
-
-
-# for c in range(7):
-#   cnn_df[f"fcn_prob_{c}"] = probs[:, c]
-
-# path = "/content/drive/MyDrive/Colab Notebooks/"
-# save_path = os.path.join(os.path.dirname(path), "fcn_val_predictions.csv")
-
-# cnn_df.to_csv(save_path, index=False)
-
-# print("Saved to:", save_path)
-
-# epochs  = range(1, EPOCHS + 1)
-
-# colors = ["#e74c3c", "#2ecc71"]
-
-# # Loss curves
-# fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-
-# ax.plot(epochs, hist_fully["train_loss"], label="Train Loss", color=colors[0], linestyle="--", alpha=0.5)
-# # ax.plot(epochs, hist_base["test_loss"],  label="Test Loss", color=colors[1], linestyle="-")
-# ax.set_title("Train Loss")
-# ax.set_xlabel("Epoch")
-# ax.set_ylabel("Cross-Entropy Loss")
-# ax.legend(fontsize=9)
-# ax.grid(True, alpha=0.3)
-# ax.set_xticks([1] + list(range(5, EPOCHS+1, 5)))
-# plt.show()
-
-# cnn = CNN(device=DEVICE, dataloader=dataloader, num_classes=7).to(DEVICE)
-# hist_base  = cnn.run_experiment(EPOCHS, lr=1e-4)
-
-# epochs  = range(1, EPOCHS + 1)
-
-# colors = ["#e74c3c", "#2ecc71"]
-
-# # Loss curves
-# fig, ax = plt.subplots(1, 1, figsize=(8, 6))
-
-# ax.plot(epochs, hist_base["train_loss"], label="Train Loss", color=colors[0], linestyle="--", alpha=0.5)
-# # ax.plot(epochs, hist_base["test_loss"],  label="Test Loss", color=colors[1], linestyle="-")
-# ax.set_title("Train Loss")
-# ax.set_xlabel("Epoch")
-# ax.set_ylabel("Cross-Entropy Loss")
-# ax.legend(fontsize=9)
-# ax.grid(True, alpha=0.3)
-# ax.set_xticks([1] + list(range(5, EPOCHS+1, 5)))
-# plt.show()
