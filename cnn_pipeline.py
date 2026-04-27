@@ -9,6 +9,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score
 import matplotlib.pyplot as plt
 import numpy as np
+from sklearn.utils.class_weight import compute_class_weight
 
 #CNN architechture adapted from in class example as a starting architecture
 class CNN(nn.Module):
@@ -16,15 +17,18 @@ class CNN(nn.Module):
         super().__init__()
         self.cnn = nn.Sequential(
             nn.Conv2d(3, 32, kernel_size=kernel_size, padding=padding),
+            nn.BatchNorm2d(32),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=kernel_size, padding=padding),
+            nn.BatchNorm2d(64),
             nn.ReLU(),
             nn.MaxPool2d(max_pool),
             nn.Dropout2d(p=dropout_cnn),
             nn.MaxPool2d(max_pool),
             nn.Conv2d(64, 128, kernel_size=kernel_size, padding=padding),
+            nn.BatchNorm2d(128),
             nn.ReLU(),
-            nn.MaxPool2d(2),
+            nn.MaxPool2d(max_pool),
             nn.Dropout2d(p=dropout_cnn),
         )
         self.classifier = nn.Sequential(
@@ -77,7 +81,8 @@ def train_one_epoch(model, train_loader, optimizer, criterion):
 
 def run_experiment(model, train_loader, val_loader, num_epochs, lr=1e-3):
     # best_val_loss = 0
-    criterion = nn.CrossEntropyLoss() #this loss converts the real values into probabilites in it first
+    weights = torch.tensor(compute_class_weight('balanced', classes=np.unique(train_loader.dataset.y.numpy()), y=train_loader.dataset.y.numpy()), dtype=torch.float32).to(model.device)
+    criterion = nn.CrossEntropyLoss(weight=weights) #this loss converts the real values into probabilites in it first
     optimizer = optim.Adam(model.parameters(), lr=lr)
     history = {"train_loss": [], "val_loss": [], "test_acc": []}
     best_f1_score = 0
@@ -97,7 +102,7 @@ def run_experiment(model, train_loader, val_loader, num_epochs, lr=1e-3):
         # history["test_acc"].append(te_acc)
         if epoch % 10 == 0:
             print(f"  Epoch {epoch:3d} | train loss {tr_loss:.4f}  | train acc {tr_acc:.4f}")
-            print(f"val loss {val_loss:.4f} | val_f1{macro_f1:.4f}")
+            print(f"val loss {val_loss:.4f} | val_f1 {macro_f1:.4f}")
 
             #| "
                 #   f"test loss {te_loss:.4f} | test acc {te_acc:.3f}")
@@ -156,23 +161,27 @@ def predict_test(model, test_loader):
   all_ids = np.array(all_ids)
 
   return all_probs, all_preds, all_ids
-
+transform = transforms.Compose([
+    transforms.RandomHorizontalFlip(),
+    transforms.RandomVerticalFlip(),
+    transforms.RandomRotation(10),
+])
 # make dataset
 class ImageDataset(Dataset):
-  def __init__(self, X, ids, y = None):
+  def __init__(self, X, ids, y = None, train=True):
     self.X = X
     self.y = y
     self.ids = ids
-
+    self.train = train
   def __len__(self):
     return len(self.X)
 
   def __getitem__(self, idx):
-      
+    x = transform(self.X[idx]) if self.train else self.X[idx]
     if self.y is not None:
-      return self.X[idx], self.y[idx], self.ids[idx]
+      return x, self.y[idx], self.ids[idx]
     else: 
-       return self.X[idx], self.ids[idx]
+       return x, self.ids[idx]
 
 def build_dataloader(images, labels, ids):
     images = np.array(images)
@@ -183,7 +192,7 @@ def build_dataloader(images, labels, ids):
     y_val = torch.tensor(y_val)
 
     train_dataset = ImageDataset(X_train, train_ids, y_train)
-    val_dataset = ImageDataset(X_val, val_ids, y_val)
+    val_dataset = ImageDataset(X_val, val_ids, y_val, False)
 
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False)
@@ -192,7 +201,7 @@ def build_dataloader(images, labels, ids):
 def build_testdata(images, ids):
    X_test = torch.tensor(images, dtype=torch.float32).permute(0, 3, 1, 2) / 255.0
 
-   test_dataset = ImageDataset(X_test, ids)
+   test_dataset = ImageDataset(X_test, ids, train=False)
    test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False)
 
    return test_loader
