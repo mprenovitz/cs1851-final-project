@@ -1,2 +1,5 @@
 data/
 *.npy
+.final
+*.pt
+cnn_best.pt
